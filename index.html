@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Mini Space Museum</title>
+
+  <!-- A-Frame and AR.js -->
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #050816;
+    }
+
+    a-scene {
+      position: fixed;
+      inset: 0;
+    }
+
+    #statusBanner {
+      position: fixed;
+      z-index: 9999;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: #9b1c1c;
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      width: max-content;
+      max-width: 90%;
+      box-sizing: border-box;
+    }
+
+    #helpText {
+      position: fixed;
+      z-index: 9999;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      text-align: center;
+      width: max-content;
+      max-width: 90%;
+      box-sizing: border-box;
+    }
+  </style>
+
+  <script>
+    // ==========================================
+    // 1. EARTH COLOUR CHANGE INTERACTION
+    // ==========================================
+
+    AFRAME.registerComponent("color-change", {
+      init: function () {
+        const colours = [
+          "#168cff",
+          "#ff3366",
+          "#00cc88",
+          "#ffcc00",
+          "#9933ff"
+        ];
+
+        let colourIndex = 0;
+
+        this.el.addEventListener("click", () => {
+          colourIndex = (colourIndex + 1) % colours.length;
+
+          this.el.setAttribute("material", "color", colours[colourIndex]);
+
+          console.log("Earth colour changed!");
+        });
+      }
+    });
+
+
+    // ==========================================
+    // 2. CUBE GROW / SHRINK INTERACTION
+    // ==========================================
+
+    AFRAME.registerComponent("grow-toggle", {
+      init: function () {
+        let isLarge = false;
+
+        this.el.addEventListener("click", () => {
+          isLarge = !isLarge;
+
+          this.el.removeAttribute("animation__tap");
+
+          this.el.setAttribute("animation__tap", {
+            property: "scale",
+            from: isLarge ? "1 1 1" : "1.55 1.55 1.55",
+            to: isLarge ? "1.55 1.55 1.55" : "1 1 1",
+            dur: 350,
+            easing: "easeInOutQuad"
+          });
+
+          console.log("Cube interaction activated!");
+        });
+      }
+    });
+
+
+    // ==========================================
+    // 3. MARKER STATUS COMPONENT
+    // ==========================================
+
+    AFRAME.registerComponent("marker-status", {
+      init: function () {
+        const banner = document.querySelector("#statusBanner");
+
+        this.el.addEventListener("markerFound", () => {
+          banner.textContent =
+            "MARKER FOUND - Welcome to Space Museum!";
+
+          banner.style.background = "#087f5b";
+        });
+
+        this.el.addEventListener("markerLost", () => {
+          banner.textContent =
+            "MARKER NOT FOUND - Show the Hiro marker";
+
+          banner.style.background = "#9b1c1c";
+        });
+      }
+    });
+
+
+    // ==========================================
+    // 4. CUSTOM MOUSE AND TOUCH RAYCASTING
+    // ==========================================
+
+    AFRAME.registerComponent("screen-pick", {
+      init: function () {
+        const scene = this.el;
+
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+
+        let canvas = null;
+        let attached = false;
+
+        const attachPointer = () => {
+          if (attached || !scene.canvas) return;
+
+          canvas = scene.canvas;
+          attached = true;
+
+          canvas.style.pointerEvents = "auto";
+          canvas.style.touchAction = "none";
+
+          canvas.addEventListener("pointerup", handlePointer);
+        };
+
+        const handlePointer = (event) => {
+          if (!scene.camera || !canvas) return;
+
+          const rect = canvas.getBoundingClientRect();
+
+          if (!rect.width || !rect.height) return;
+
+          pointer.x =
+            ((event.clientX - rect.left) / rect.width) * 2 - 1;
+
+          pointer.y =
+            -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+          raycaster.setFromCamera(pointer, scene.camera);
+
+          const targets = Array.from(
+            scene.querySelectorAll(".clickable")
+          )
+          .filter(el => el.object3D)
+          .map(el => el.object3D);
+
+          const intersections = raycaster.intersectObjects(
+            targets,
+            true
+          );
+
+          if (intersections.length > 0) {
+            let object = intersections[0].object;
+
+            while (
+              object &&
+              !(
+                object.el &&
+                object.el.classList.contains("clickable")
+              )
+            ) {
+              object = object.parent;
+            }
+
+            if (object && object.el) {
+              object.el.emit("click", {
+                sourceEvent: event
+              }, false);
+
+              console.log(
+                "Clicked object:",
+                object.el.id
+              );
+            }
+          }
+        };
+
+        scene.addEventListener("loaded", attachPointer);
+        scene.addEventListener("renderstart", attachPointer);
+      }
+    });
+  </script>
+</head>
+
+<body>
+
+  <!-- STATUS BANNER -->
+  <div id="statusBanner">
+    MARKER NOT FOUND - Show the Hiro marker
+  </div>
+
+  <!-- USER INSTRUCTIONS -->
+  <div id="helpText">
+    Tap Earth to change colour | Tap blue cube to grow
+  </div>
+
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; colorManagement: true;"
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+    screen-pick>
+
+    <!-- 3D MODEL ASSET -->
+    <a-assets timeout="15000">
+
+      <a-asset-item
+        id="avocadoModel"
+        src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Assets@main/Models/Avocado/glTF-Binary/Avocado.glb">
+      </a-asset-item>
+
+    </a-assets>
+
+
+    <!-- ===================================
+         HIRO MARKER
+    ==================================== -->
+
+    <a-marker
+      id="hiroMarker"
+      preset="hiro"
+      marker-status>
+
+
+      <!-- MUSEUM BASE -->
+      <a-box
+        position="0 0.025 0"
+        width="1.15"
+        height="0.05"
+        depth="0.90"
+        color="#172554"
+        material="roughness: 0.7">
+      </a-box>
+
+
+      <!-- MUSEUM TITLE -->
+      <a-text
+        value="MINI SPACE MUSEUM"
+        position="0 0.12 -0.37"
+        rotation="-90 0 0"
+        align="center"
+        color="#facc15"
+        width="2.5">
+      </a-text>
+
+
+      <!-- ===================================
+           SUN - ROTATION ANIMATION
+      ==================================== -->
+
+      <a-sphere
+        id="sun"
+        position="-0.36 0.25 -0.13"
+        radius="0.14"
+        color="#ff9900"
+        material="emissive: #ff6600; emissiveIntensity: 0.3"
+        animation__rotate="
+          property: rotation;
+          to: 0 360 0;
+          dur: 7000;
+          easing: linear;
+          loop: true">
+
+      </a-sphere>
+
+      <a-text
+        value="SUN"
+        position="-0.36 0.08 -0.13"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.2">
+      </a-text>
+
+
+      <!-- ===================================
+           EARTH - COLOUR CHANGE
+      ==================================== -->
+
+      <a-sphere
+        id="earth"
+        class="clickable"
+        position="0 0.23 -0.13"
+        radius="0.14"
+        color="#168cff"
+        material="roughness: 0.35"
+        color-change>
+      </a-sphere>
+
+      <a-text
+        value="EARTH - TAP"
+        position="0 0.08 -0.13"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.5">
+      </a-text>
+
+
+      <!-- ===================================
+           SATURN - ROTATING RING
+      ==================================== -->
+
+      <a-entity
+        position="0.36 0.25 -0.13">
+
+        <a-sphere
+          radius="0.12"
+          color="#e6bd83">
+        </a-sphere>
+
+        <a-torus
+          radius="0.19"
+          radius-tubular="0.025"
+          color="#f5d28a"
+          rotation="65 0 0"
+          animation__ring="
+            property: rotation;
+            to: 65 360 0;
+            dur: 7000;
+            easing: linear;
+            loop: true">
+        </a-torus>
+
+      </a-entity>
+
+      <a-text
+        value="SATURN"
+        position="0.36 0.08 -0.13"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.2">
+      </a-text>
+
+
+      <!-- ===================================
+           ROCKET - POSITION ANIMATION
+      ==================================== -->
+
+      <a-entity
+        id="rocket"
+        position="-0.36 0.27 0.24"
+        animation="
+          property: position;
+          from: -0.36 0.25 0.24;
+          to: -0.36 0.38 0.24;
+          dir: alternate;
+          dur: 1500;
+          loop: true;
+          easing: easeInOutSine">
+
+        <!-- Rocket body -->
+        <a-cylinder
+          radius="0.065"
+          height="0.27"
+          color="#eeeeee">
+        </a-cylinder>
+
+        <!-- Rocket top -->
+        <a-cone
+          position="0 0.18 0"
+          radius-bottom="0.065"
+          height="0.12"
+          color="#ef4444">
+        </a-cone>
+
+        <!-- Left fin -->
+        <a-box
+          position="-0.075 -0.08 0"
+          width="0.06"
+          height="0.12"
+          depth="0.035"
+          color="#ef4444">
+        </a-box>
+
+        <!-- Right fin -->
+        <a-box
+          position="0.075 -0.08 0"
+          width="0.06"
+          height="0.12"
+          depth="0.035"
+          color="#ef4444">
+        </a-box>
+
+        <!-- Rocket window -->
+        <a-sphere
+          position="0 0.035 0.066"
+          radius="0.035"
+          color="#38bdf8">
+        </a-sphere>
+
+      </a-entity>
+
+      <a-text
+        value="ROCKET"
+        position="-0.36 0.08 0.24"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.2">
+      </a-text>
+
+
+      <!-- ===================================
+           INTERACTIVE BLUE CUBE
+      ==================================== -->
+
+      <a-box
+        id="energyCube"
+        class="clickable"
+        position="0 0.15 0.25"
+        width="0.17"
+        height="0.17"
+        depth="0.17"
+        color="#38bdf8"
+        material="
+          metalness: 0.4;
+          roughness: 0.3;
+          emissive: #0369a1;
+          emissiveIntensity: 0.2"
+        grow-toggle
+        animation__spin="
+          property: rotation;
+          to: 360 360 0;
+          loop: true;
+          dur: 6500">
+      </a-box>
+
+      <a-text
+        value="TAP TO GROW"
+        position="0 0.08 0.43"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.5">
+      </a-text>
+
+
+      <!-- ===================================
+           GLB 3D MODEL - AVOCADO
+      ==================================== -->
+
+      <a-entity
+        id="avocado"
+        gltf-model="#avocadoModel"
+        position="0.36 0.13 0.25"
+        rotation="0 180 0"
+        scale="0.16 0.16 0.16">
+      </a-entity>
+
+      <a-text
+        value="3D SPECIMEN"
+        position="0.36 0.08 0.43"
+        rotation="-90 0 0"
+        align="center"
+        color="white"
+        width="1.5">
+      </a-text>
+
+
+    </a-marker>
+
+
+    <!-- CAMERA -->
+    <a-entity camera></a-entity>
+
+  </a-scene>
+
+</body>
+</html>
